@@ -1,0 +1,28 @@
+FROM nedbank-de-challenge/base:1.0
+
+# Fix Spark hostname resolution when running with --network=none
+ENV SPARK_LOCAL_IP=127.0.0.1
+ENV SPARK_LOCAL_HOSTNAME=localhost
+ENV PARQUET_COMPRESSION=uncompressed
+
+# Install any additional Python dependencies you need beyond the base image.
+# Leave requirements.txt empty if the base packages are sufficient.
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Download Delta jars directly from Maven into PySpark jars directory
+RUN curl -L -o /usr/local/lib/python3.11/site-packages/pyspark/jars/delta-spark_2.12-3.1.0.jar \
+    https://repo1.maven.org/maven2/io/delta/delta-spark_2.12/3.1.0/delta-spark_2.12-3.1.0.jar && \
+    curl -L -o /usr/local/lib/python3.11/site-packages/pyspark/jars/delta-storage-3.1.0.jar \
+    https://repo1.maven.org/maven2/io/delta/delta-storage/3.1.0/delta-storage-3.1.0.jar
+
+# Copy pipeline code and configuration into the image.
+# Do NOT copy data files or output directories — these are injected at runtime
+# via Docker volume mounts by the scoring system.
+COPY pipeline/ pipeline/
+COPY config/ config/
+
+# Entry point — must run the complete pipeline end-to-end without interactive input.
+# The scoring system uses this CMD directly; do not require TTY or stdin.
+CMD ["python", "-m", "pipeline.run_all"]

@@ -1,0 +1,3 @@
+account_id,customer_ref,account_type,account_status,open_date,product_tier,digital_channel,credit_limit,current_balance,last_activity_date
+A001,C001,Cheque,Active,2020-01-01,Gold,true,50000.00,12345.67,2024-03-01
+A002,C002,Savings,Active,2019-06-15,Silver,false,20000.00,5000.00,2024-02-28
