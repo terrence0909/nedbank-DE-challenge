@@ -1,76 +1,117 @@
 # ============================================================
-# Data Quality Rules
-#
-# This file is REQUIRED from Stage 2 onward.
-# The scoring system checks that your pipeline reads DQ logic
-# from this file rather than hardcoding it in Python.
-#
-# Populate this file with the rules your transform.py applies
-# to flag records in the transactions Silver/Gold tables.
-#
-# Structure is flexible — design it to suit your implementation.
-# The example skeleton below shows one common pattern.
+# Data Quality Rules - Stage 2
 # ============================================================
 
-# ── Null checks ───────────────────────────────────────────────
-# Fields that must not be null. Records violating these rules
-# should receive dq_flag = "NULL_REQUIRED".
-#
-# null_checks:
-#   fact_transactions:
-#     - transaction_id
-#     - account_id
-#     - transaction_date
-#     - amount
-#     - transaction_type
-#     - currency
-#     - channel
+version: 2
 
-# ── Type checks ───────────────────────────────────────────────
-# Fields with expected types. Records where values cannot be
-# cast should receive dq_flag = "TYPE_MISMATCH".
-#
-# type_checks:
-#   fact_transactions:
-#     amount: decimal
-#     transaction_date: date
-#     transaction_timestamp: timestamp
+# ============================================================
+# ACCOUNTS TABLE
+# ============================================================
+accounts:
+  null_checks:
+    - column: account_id
+      action: QUARANTINE
+      dq_code: EXCLUDED_NULL_PK
+    - column: customer_id
+      action: FLAG
+      dq_code: NULL_REQUIRED
 
-# ── Value domain checks ───────────────────────────────────────
-# Fields constrained to a fixed set of values.
-#
-# domain_checks:
-#   transaction_type:
-#     allowed: [DEBIT, CREDIT, FEE, REVERSAL]
-#     dq_flag: TYPE_MISMATCH
-#   channel:
-#     allowed: [POS, APP, ATM, EFT, USSD, INTERNAL]
-#     dq_flag: TYPE_MISMATCH
+  duplicate_checks:
+    keys: [account_id]
+    keep: first
+    dq_code: DUPLICATE_ACCOUNT
 
-# ── Currency normalisation ────────────────────────────────────
-# Source data may contain currency variants. All values must be
-# standardised to "ZAR" in the Gold output. Records with
-# non-standard source values should receive dq_flag = "CURRENCY_VARIANT".
-#
-# currency_normalisation:
-#   target_value: ZAR
-#   flag_variants: true
+  type_checks:
+    credit_limit:
+      expected_type: decimal
+      action: CORRECT
+    current_balance:
+      expected_type: decimal
+      action: CORRECT
 
-# ── Date format checks ────────────────────────────────────────
-# Date fields must conform to ISO format (YYYY-MM-DD).
-# Records with unrecognised date formats should receive
-# dq_flag = "DATE_FORMAT".
-#
-# date_format_checks:
-#   - transaction_date
-#   - last_activity_date
+  date_format_checks:
+    - column: open_date
+      formats: ["yyyy-MM-dd", "dd/MM/yyyy"]
+      dq_code: DATE_FORMAT
+    - column: last_activity_date
+      formats: ["yyyy-MM-dd", "dd/MM/yyyy"]
+      dq_code: DATE_FORMAT
 
-# ── Referential integrity checks ─────────────────────────────
-# Transactions referencing an account_id not present in
-# dim_accounts should receive dq_flag = "ORPHANED_ACCOUNT".
-#
-# referential_integrity:
-#   fact_transactions:
-#     - field: account_id
-#       references: dim_accounts.account_id
-#       dq_flag: ORPHANED_ACCOUNT
+# ============================================================
+# CUSTOMERS TABLE
+# ============================================================
+customers:
+  null_checks:
+    - column: customer_id
+      action: QUARANTINE
+      dq_code: EXCLUDED_NULL_PK
+
+  duplicate_checks:
+    keys: [customer_id]
+    keep: first
+    dq_code: DUPLICATE_CUSTOMER
+
+  type_checks:
+    risk_score:
+      expected_type: integer
+      action: CORRECT
+
+  date_format_checks:
+    - column: dob
+      formats: ["yyyy-MM-dd", "dd/MM/yyyy"]
+      dq_code: DATE_FORMAT
+
+  domain_checks:
+    - column: gender
+      allowed: ["M", "F"]
+      dq_code: INVALID_VALUE
+
+# ============================================================
+# TRANSACTIONS TABLE
+# ============================================================
+transactions:
+  duplicate_checks:
+    keys: [transaction_id]
+    keep: latest
+    dq_code: DUPLICATE_DEDUPED
+
+  orphaned_checks:
+    column: account_id
+    reference_table: accounts
+    reference_column: account_id
+    action: FLAG
+    dq_code: ORPHANED_ACCOUNT
+
+  null_checks:
+    - column: transaction_id
+      action: QUARANTINE
+      dq_code: NULL_REQUIRED
+    - column: amount
+      action: FLAG
+      dq_code: NULL_REQUIRED
+
+  type_checks:
+    amount:
+      expected_type: decimal
+      action: CORRECT
+      dq_code: TYPE_MISMATCH
+
+  date_format_checks:
+    - column: transaction_date
+      formats: ["yyyy-MM-dd", "dd/MM/yyyy", "MM/dd/yyyy"]
+      dq_code: DATE_FORMAT
+
+  currency_normalization:
+    column: currency
+    target: "ZAR"
+    variants: ["R", "rands", "710", "zar", "Zar"]
+    dq_code: CURRENCY_VARIANT
+
+# ============================================================
+# SCHEMA EVOLUTION (Stage 2)
+# ============================================================
+schema_evolution:
+  transactions:
+    - column: merchant_subcategory
+      nullable: true
+      default: null

@@ -6,7 +6,6 @@ ENV SPARK_LOCAL_HOSTNAME=localhost
 ENV PARQUET_COMPRESSION=uncompressed
 
 # Install any additional Python dependencies you need beyond the base image.
-# Leave requirements.txt empty if the base packages are sufficient.
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -18,11 +17,19 @@ RUN curl -L -o /usr/local/lib/python3.11/site-packages/pyspark/jars/delta-spark_
     https://repo1.maven.org/maven2/io/delta/delta-storage/3.1.0/delta-storage-3.1.0.jar
 
 # Copy pipeline code and configuration into the image.
-# Do NOT copy data files or output directories — these are injected at runtime
-# via Docker volume mounts by the scoring system.
 COPY pipeline/ pipeline/
 COPY config/ config/
 
-# Entry point — must run the complete pipeline end-to-end without interactive input.
-# The scoring system uses this CMD directly; do not require TTY or stdin.
+# Ensure config files are available at the expected runtime location
+RUN mkdir -p /data/config
+COPY config/pipeline_config.yaml /data/config/pipeline_config.yaml
+COPY config/dq_rules.yaml /data/config/dq_rules.yaml
+
+# Create output directory structure
+RUN mkdir -p /data/output/bronze /data/output/silver /data/output/gold
+
+# Set reasonable Spark memory limits (fits within 2GB container constraint)
+ENV PYSPARK_SUBMIT_ARGS="--driver-memory 1g --executor-memory 1g pyspark-shell"
+
+# Entry point — runs the complete pipeline end-to-end
 CMD ["python", "-m", "pipeline.run_all"]
